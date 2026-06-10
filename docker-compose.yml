@@ -1,0 +1,225 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ops-nginx
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-gateway
+      - user-service
+      - order-service
+      - report-service
+      - saga-orchestrator
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./api-gateway:/var/www/api-gateway:ro
+      - ./user:/var/www/user:ro
+      - ./order:/var/www/order:ro
+      - ./report:/var/www/report:ro
+      - ./saga-orchestrator:/var/www/saga-orchestrator:ro
+    networks:
+      edge-network: {}
+      app-network:
+        aliases:
+          - internal-router
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    env_file:
+      - ./api-gateway/.env.docker.example
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./api-gateway:/var/www
+      - api-gateway-vendor:/var/www/vendor
+      - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
+    networks:
+      - app-network
+
+  user-service:
+    build:
+      context: ./user
+      dockerfile: Dockerfile
+    container_name: user-service
+    env_file:
+      - ./user/.env.docker.example
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./user:/var/www
+      - user-vendor:/var/www/vendor
+      - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
+    networks:
+      - app-network
+      - user-db-network
+
+  order-service:
+    build:
+      context: ./order
+      dockerfile: Dockerfile
+    container_name: order-service
+    env_file:
+      - ./order/.env.docker.example
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./order:/var/www
+      - order-vendor:/var/www/vendor
+      - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
+    networks:
+      - app-network
+      - order-db-network
+
+  report-service:
+    build:
+      context: ./report
+      dockerfile: Dockerfile
+    container_name: report-service
+    env_file:
+      - ./report/.env.docker.example
+    depends_on:
+      postgres-report:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./report:/var/www
+      - report-vendor:/var/www/vendor
+      - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
+    networks:
+      - app-network
+      - report-db-network
+
+  saga-orchestrator:
+    build:
+      context: ./saga-orchestrator
+      dockerfile: Dockerfile
+    container_name: saga-orchestrator
+    env_file:
+      - ./saga-orchestrator/.env.docker.example
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./saga-orchestrator:/var/www
+      - saga-orchestrator-vendor:/var/www/vendor
+      - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
+    networks:
+      - app-network
+
+  saga-orchestrator-worker:
+    build:
+      context: ./saga-orchestrator
+      dockerfile: Dockerfile
+    container_name: saga-orchestrator-worker
+    command: ["php", "artisan", "saga:consume-streams"]
+    env_file:
+      - ./saga-orchestrator/.env.docker.example
+    depends_on:
+      redis:
+        condition: service_healthy
+      saga-orchestrator:
+        condition: service_started
+    volumes:
+      - ./saga-orchestrator:/var/www
+      - saga-orchestrator-vendor:/var/www/vendor
+      - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: redis-streams
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
+  postgres-user:
+    image: postgres:16-alpine
+    container_name: postgres-user
+    env_file:
+      - ./docker/env/postgres-user.env
+    volumes:
+      - postgres-user-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_service -d user_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - user-db-network
+
+  postgres-order:
+    image: postgres:16-alpine
+    container_name: postgres-order
+    env_file:
+      - ./docker/env/postgres-order.env
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_service -d order_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - order-db-network
+
+  postgres-report:
+    image: postgres:16-alpine
+    container_name: postgres-report
+    env_file:
+      - ./docker/env/postgres-report.env
+    volumes:
+      - postgres-report-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U report_service -d report_service"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - report-db-network
+
+networks:
+  edge-network:
+    driver: bridge
+  app-network:
+    driver: bridge
+    internal: true
+  user-db-network:
+    driver: bridge
+    internal: true
+  order-db-network:
+    driver: bridge
+    internal: true
+  report-db-network:
+    driver: bridge
+    internal: true
+
+volumes:
+  api-gateway-vendor:
+  user-vendor:
+  order-vendor:
+  report-vendor:
+  saga-orchestrator-vendor:
+  redis-data:
+  postgres-user-data:
+  postgres-order-data:
+  postgres-report-data:
