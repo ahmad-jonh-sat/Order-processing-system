@@ -30,6 +30,46 @@ class ProxyController extends Controller
         return $this->proxy($request, config('services.report.url'), 'api', $path);
     }
 
+    public function shopCreateOrder(Request $request): Response
+    {
+        return $this->proxy($request, config('services.order.url'), 'api/shop/orders');
+    }
+
+    public function shopGetOrder(Request $request, int $id): Response
+    {
+        return $this->proxy($request, config('services.order.url'), 'api/shop/orders', (string) $id);
+    }
+
+    public function shopCancelOrder(Request $request, int $id): Response
+    {
+        return $this->proxy($request, config('services.saga.url'), 'api/internal/sagas/orders', "{$id}/cancel");
+    }
+
+    public function shopGetReport(Request $request, int $orderId): Response
+    {
+        return $this->proxy($request, config('services.report.url'), 'api/shop/reports', (string) $orderId);
+    }
+
+    public function shopDownloadReport(Request $request, int $orderId): Response
+    {
+        return $this->proxy($request, config('services.report.url'), 'api/shop/reports', "{$orderId}/download");
+    }
+
+    public function shopTopUpWallet(Request $request): Response
+    {
+        return $this->proxy($request, config('services.user.url'), 'api/shop/wallet/top-up');
+    }
+
+    public function shopWallet(Request $request): Response
+    {
+        return $this->proxy($request, config('services.user.url'), 'api/shop/wallet');
+    }
+
+    public function shopProducts(Request $request): Response
+    {
+        return $this->proxy($request, config('services.order.url'), 'api/products');
+    }
+
     private function proxy(Request $request, string $baseUrl, string $prefix, ?string $path = null): Response
     {
         $targetUrl = $this->targetUrl($baseUrl, $prefix, $path, $request->getQueryString());

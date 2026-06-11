@@ -47,4 +47,8 @@ return [
         'url' => env('REPORT_SERVICE_URL', 'http://internal-router:8081/report'),
     ],
 
+    'saga' => [
+        'url' => env('SAGA_ORCHESTRATOR_URL', 'http://internal-router:8081/saga'),
+    ],
+
 ];
