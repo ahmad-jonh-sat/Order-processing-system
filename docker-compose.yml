@@ -31,6 +31,8 @@ services:
     env_file:
       - ./api-gateway/.env.docker.example
     depends_on:
+      postgres-saga:
+        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
@@ -108,6 +110,8 @@ services:
     env_file:
       - ./saga-orchestrator/.env.docker.example
     depends_on:
+      postgres-saga:
+        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
@@ -116,6 +120,7 @@ services:
       - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
     networks:
       - app-network
+      - saga-db-network
 
   saga-orchestrator-worker:
     build:
@@ -126,6 +131,8 @@ services:
     env_file:
       - ./saga-orchestrator/.env.docker.example
     depends_on:
+      postgres-saga:
+        condition: service_healthy
       redis:
         condition: service_healthy
       saga-orchestrator:
@@ -136,6 +143,7 @@ services:
       - ./docker/php/conf.d/opcache-dev.ini:/usr/local/etc/php/conf.d/99-opcache-dev.ini:ro
     networks:
       - app-network
+      - saga-db-network
     restart: unless-stopped
 
   redis:
@@ -197,6 +205,21 @@ services:
     networks:
       - report-db-network
 
+  postgres-saga:
+    image: postgres:16-alpine
+    container_name: postgres-saga
+    env_file:
+      - ./docker/env/postgres-saga.env
+    volumes:
+      - postgres-saga-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saga_orchestrator -d saga_orchestrator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - saga-db-network
+
 networks:
   edge-network:
     driver: bridge
@@ -212,6 +235,9 @@ networks:
   report-db-network:
     driver: bridge
     internal: true
+  saga-db-network:
+    driver: bridge
+    internal: true
 
 volumes:
   api-gateway-vendor:
@@ -223,3 +249,4 @@ volumes:
   postgres-user-data:
   postgres-order-data:
   postgres-report-data:
+  postgres-saga-data:
